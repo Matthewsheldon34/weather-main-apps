@@ -194,7 +194,7 @@ export function WeatherPage() {
             <img src={logo} alt="logo" />
             <div className="relative right-20 w-auto">
               <div 
-                className="w-[40] grid cursor-pointer h-10 bg-[hsl(243,27%,20%)] lg:flex items-center gap-1 p-1 rounded-md text-amber-50 font-bold justify-center" 
+                className="w-auto grid cursor-pointer h-10 bg-[hsl(243,27%,20%)] lg:flex items-center gap-1 p-1 rounded-md text-amber-50 font-bold justify-center" 
                 onClick={() => setShowUnits(!showUnits)}
               >
                 <div className="flex items-center p-1 gap-2 w-auto justify-center">
