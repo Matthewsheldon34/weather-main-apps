@@ -3,7 +3,7 @@ import logo from "../images/logo.svg";
 import IconSearch from "../images/IconSearch.svg";
 import BgTodayLarge from "../images/BgTodayLarge.svg";
 import IconSunny from "../images/IconSunny.webp"
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import IconSnow from "../images/IconSnow.webp";
 import IconStorm from "../images/IconStorm.webp";
 import IconRain from "../images/IconRain.webp";
@@ -14,13 +14,15 @@ import IconUnits from '../images/IconUnits.svg';
 import iconLoading from "../images/IconLoading.svg";
 import BgTodaySmall from "../images/BgTodaySmall.svg";
 import axios from "axios";
+import IconOvercast from "../images/IconOvercast.webp";
 
 // Map weather conditions to icons
 const weatherIconMap = {
   "Clear": IconSunny,
+  "Sunny": IconSunny,
   "Partly cloudy": IconPartly,
-  "Cloudy": IconPartly,
-  "Overcast": IconPartly,
+  "Cloudy": IconOvercast,
+  "Overcast": IconOvercast,
   "Mist": IconFog,
   "Fog": IconFog,
   "Light rain": IconRain,
@@ -39,8 +41,9 @@ const weatherIconMap = {
 
 const getWeatherIcon = (condition) => {
   if (!condition) return IconSunny;
+  const conditionText = typeof condition === 'string' ? condition : condition?.text || '';
   for (const [key, value] of Object.entries(weatherIconMap)) {
-    if (condition.toLowerCase().includes(key.toLowerCase())) {
+    if (conditionText.toLowerCase().includes(key.toLowerCase())) {
       return value;
     }
   }
@@ -81,22 +84,61 @@ export function WeatherPage() {
   ];
 
   const isFahrenheit = selectedUnit.includes("Fahrenheit(°F)");
-  
   const isKmh = selectedUnit.includes("km/h");
   const isMph = selectedUnit.includes("mph");
   const isMM = selectedUnit.includes("Millimeters(mm)");
   const isInches = selectedUnit.includes("Inches(in)");
-
+  
   const feelsLikeLabel = (temp) => {
     if (temp < 10) return "Cold";
     if (temp < 25) return "Comfortable";
     return "Hot";
   };
 
-  const API_URL = import.meta.env.VITE_API_URL || 'https://weather-main-app-5dg7.onrender.com';
+  const API_URL = import.meta.env.VITE_API_URL || 'https://weather-main-app-qm9s.onrender.com';
+
+  // ✅ Use useMemo to compute available days from weather data
+  const availableDays = useMemo(() => {
+    if (!weather?.forecast) return ["Today"];
+    return weather.forecast.map(day => day.dayName || "Today");
+  }, [weather]);
+
+  // ✅ Ensure selected day is valid - if not, set to first available day
+  const validSelectedDay = useMemo(() => {
+    if (availableDays.includes(selectedDay)) {
+      return selectedDay;
+    }
+    return availableDays[0] || "Today";
+  }, [availableDays, selectedDay]);
+
+  // ✅ Format time to "3 PM" format
+  const formatTime = (timeStr) => {
+    if (!timeStr) return "12 PM";
+    
+    let timePart = timeStr;
+    if (timeStr.includes("T")) {
+      timePart = timeStr.split("T")[1];
+    }
+    if (timeStr.includes(" ")) {
+      timePart = timeStr.split(" ")[1];
+    }
+    
+    if (timePart.includes(":")) {
+      const [hours] = timePart.split(":");
+      const hoursNum = parseInt(hours, 10);
+      const isPM = hoursNum >= 12;
+      const hour12 = hoursNum % 12 || 12;
+      return `${hour12} ${isPM ? "PM" : "AM"}`;
+    }
+    
+    return timeStr;
+  };
 
   const getWeather = async () => {
-    if (!searchCity.trim()) return;
+    if (!searchCity.trim()) {
+      setError("Please enter a city name");
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -104,34 +146,62 @@ export function WeatherPage() {
     
     try {
       const res = await axios.get(
-        `${API_URL}/weather?city=${encodeURIComponent(searchCity)}`
+        `${API_URL}/weather?city=${encodeURIComponent(searchCity.trim())}`
       );
 
-      // ✅ Extract data from the new Open-Meteo format
       const data = res.data;
       
-      // Format forecast days
-      const forecastDays = data.forecast?.forecastday?.map((item, index) => {
-        const date = new Date(item.date);
-        const dayName = index === 0 ? "Today" : date.toLocaleDateString('en-US', { weekday: 'long' });
-
+      console.log('API Response:', data);
+      
+      // Check if there's an error in the response
+      if (data.error) {
+        setError(data.message || "City not found");
+        setWeather(null);
+        setLoading(false);
+        return;
+      }
+      
+      // ✅ Format forecast days with dynamic day names from backend
+      const forecastDays = data.forecast?.forecastday?.map((item) => {
+        // Use the dayName from the backend (which is dynamically calculated)
+        const dayName = item.dayName || "Today";
+        
+        // ✅ Handle hourly data
+        let hourlyData = [];
+        
+        if (item.hour && Array.isArray(item.hour)) {
+          // Use the hour data from the backend
+          hourlyData = item.hour.map(hour => ({
+            time: hour.time || "",
+            temp_c: hour.temp_c || 0,
+            temp_f: hour.temp_f || 0,
+            condition: hour.condition || "Clear",
+            icon: hour.icon || "",
+            humidity: hour.humidity || 0,
+            wind_kph: hour.wind_kph || 0,
+            wind_mph: hour.wind_mph || 0,
+            precip_mm: hour.precip_mm || 0,
+            precip_in: hour.precip_in || 0,
+            chance_of_rain: hour.chance_of_rain || 0,
+          }));
+        }
+        
         return {
-          date: item.date,
+          date: item.date || "",
           dayName: dayName,
           max_temp_c: item.day?.maxtemp_c || 0,
           max_temp_f: item.day?.maxtemp_f || 0,
           min_temp_c: item.day?.mintemp_c || 0,
           min_temp_f: item.day?.mintemp_f || 0,
-          condition: item.day?.condition?.text || "Clear",
-          icon: item.day?.condition?.icon || "",
+          condition: item.day?.condition || "Clear",
+          icon: item.day?.icon || "",
           humidity: item.day?.humidity || 0,
           wind_kph: item.day?.wind_kph || 0,
           wind_mph: item.day?.wind_mph || 0,
           precip_mm: item.day?.precip_mm || 0,
           precip_in: item.day?.precip_in || 0,
           chance_of_rain: item.day?.daily_chance_of_rain || 0,
-          // Hourly data for this day
-          hour: item.hour || []
+          hour: hourlyData
         };
       }) || [];
 
@@ -148,6 +218,7 @@ export function WeatherPage() {
           wind_mph: data.current?.wind_mph || 0,
           precip_mm: data.current?.precip_mm || 0,
           precip_in: data.current?.precip_in || 0,
+          condition: data.current?.condition || "Clear",
         },
         forecast: forecastDays,
       });
@@ -174,16 +245,40 @@ export function WeatherPage() {
     return weather.forecast.find(day => day.dayName === dayName);
   };
 
-  const getAvailableDays = () => {
-    if (!weather?.forecast) return ["Today"];
-    return weather.forecast.map(day => day.dayName);
+  const selectedDayForecast = getDayData(validSelectedDay);
+
+  // ✅ Get all hours for the selected day
+  const allHours = selectedDayForecast?.hour || [];
+  
+  // ✅ Get hours from 3 PM to 10 PM (15:00 to 22:00)
+  const getHoursInRange = (hours) => {
+    if (!hours || hours.length === 0) return [];
+    
+    const filteredHours = hours.filter(hour => {
+      if (!hour.time) return false;
+      let timeStr = hour.time;
+      if (timeStr.includes("T")) {
+        timeStr = timeStr.split("T")[1];
+      }
+      if (timeStr.includes(" ")) {
+        timeStr = timeStr.split(" ")[1];
+      }
+      const [hoursStr] = timeStr.split(":");
+      const hourNum = parseInt(hoursStr, 10);
+      return hourNum >= 15 && hourNum <= 22;
+    });
+    
+    // If no hours in range, take first 8 hours or all available
+    return filteredHours.length > 0 ? filteredHours : hours.slice(0, 8);
   };
 
-  const availableDays = getAvailableDays();
-  const selectedDayForecast = getDayData(selectedDay);
-  
-  // ✅ Get hourly data - fallback to empty array
-  const currentHours = selectedDayForecast?.hour || [];
+  const displayHours = getHoursInRange(allHours);
+
+  // ✅ Helper function to get the day name for display
+  const getDisplayDayName = (dayName) => {
+    if (dayName === "Today") return "Today";
+    return dayName;
+  };
 
   return (
     <>
@@ -266,7 +361,7 @@ export function WeatherPage() {
           
           {showdropdown && (
             <div className="relative flex justify-center ">
-              <div className="cursor-pointer md:w-75 lg:w-75 w-75 p-1  justify-center absolute z-50 bg-[hsl(243,27%,20%)] border border-gray-600 rounded-md mt-1">
+              <div className="cursor-pointer md:w-75 lg:w-75 w-75 p-1 justify-center absolute z-50 bg-[hsl(243,27%,20%)] border border-gray-600 rounded-md mt-1">
                 {names.map((name, index) => (
                   <div 
                     key={index}
@@ -274,7 +369,7 @@ export function WeatherPage() {
                       setShowDropDown(false);
                       setSearchCity(name);
                     }}
-                    className=" lg:w-73 md:w-73 p-2 gap-2 w-87 font-bold rounded-md text-amber-50 hover:bg-[hsl(243,23%,24%)]"
+                    className="lg:w-73 md:w-73 p-2 gap-2 w-87 font-bold rounded-md text-amber-50 hover:bg-[hsl(243,23%,24%)]"
                   >
                     {name}
                   </div>
@@ -311,7 +406,6 @@ export function WeatherPage() {
               {/* Main Weather Card */}
               <div className="relative flex justify-center items-center w-full">
                 <div className="relative flex items-center justify-center p-1">
-                  {/* Weather Info Overlay */}
                   <div className="absolute inset-0 flex flex-col items-center right-auto p-5 z-10">
                     <img src={iconLoading} alt="icon" />
                     <i className="text-white text-2xl font-bold">{weather.city}</i>
@@ -319,7 +413,6 @@ export function WeatherPage() {
                     <p className="text-white text-xl font-bold">{today.toDateString()}</p>
                   </div>
 
-                  {/* Background Images */}
                   <img 
                     src={BgTodayLarge} 
                     alt="big today" 
@@ -331,9 +424,8 @@ export function WeatherPage() {
                     className="block md:hidden w-full" 
                   />
 
-                  {/* Temperature and Icon */}
                   <div className="absolute right-4 flex items-center gap-2 z-10">
-                    <img src={IconSunny} alt="" className="h-12 w-auto" />
+                    <img src={getWeatherIcon(weather.current?.condition)} alt="weather icon" className="h-12 w-auto" />
                     <i className="text-6xl font-bold text-white">
                       {weather?.current && (
                         isFahrenheit
@@ -394,7 +486,7 @@ export function WeatherPage() {
 
               <div className="items-center p-4 gap-2 relative w-auto grid grid-cols-4 md:grid-cols-6 lg:grid-cols-7 overflow-x-auto">
                 {weather?.forecast?.map((day, index) => {
-                  const dayName = index === 0 ? "Today" : new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' });
+                  const dayName = day.dayName || `Day ${index + 1}`;
                   const icon = getWeatherIcon(day.condition);
                   
                   return (
@@ -423,61 +515,79 @@ export function WeatherPage() {
               </div>
             </div>
 
-            {/* Hourly Forecast */}
-            <div className="ml-auto md:w-full p-4 lg:w-auto items-center w-full grid grid:flex gap-4 bg-[hsla(246,14%,27%,0.38)] rounded-lg">
-              <div className="flex md:w-auto gap-5 p-4 justify-between w-full">
+            {/* Hourly Forecast - DYNAMIC */}
+            <div className="ml-auto md:w-full p-6 lg:w-auto items-center w-full bg-[hsla(246,14%,27%,0.38)] rounded-lg">
+              <div className="flex items-center justify-between mb-4 px-2">
                 <h1 className="text-xl font-bold text-white">Hourly forecast</h1>
-                <div className=" ml-auto cursor-pointer w-28 h-8 bg-[hsl(243,27%,20%)] flex items-center gap-1 p-1 rounded-md text-amber-50 font-bold justify-center">
+                <div className="relative">
                   <div
                     onClick={() => setIsOpen(!isOpen)}
-                    className="w-24 h-8 bg-[hsl(243,27%,20%)] flex items-center gap-1 p-1 rounded-md text-amber-50 font-bold justify-center"
+                    className="cursor-pointer w-28 h-8 bg-[hsl(243,27%,20%)] flex items-center gap-1 px-3 rounded-md text-amber-50 font-bold justify-center"
                   >
-                    {selectedDay || "Today"}
+                    {getDisplayDayName(validSelectedDay)}
                     <img src={IconDropdown} alt="icon dropdown" className="h-2" />
                   </div>
+                  {isOpen && (
+                    <div className="absolute right-0 mt-1 w-48 bg-[hsl(243,27%,20%)] rounded-md shadow-md border border-gray-600 z-50">
+                      {availableDays.map((day, index) => (
+                        <div
+                          key={index}
+                          onClick={() => {
+                            setSelectedDay(day);
+                            setIsOpen(false);
+                          }}
+                          className="px-4 py-2 rounded-md hover:bg-[hsl(243,23%,24%)] cursor-pointer text-amber-50"
+                        >
+                          {day}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {isOpen && (
-                <div className="border border-gray-600 absolute z-50 p-1  -mt-50 right-15  w-48 bg-[hsl(243,27%,20%)] rounded-md shadow-md">
-                  {availableDays.map((day, index) => (
-                    <div
-                      key={index}
-                      onClick={() => {
-                        setSelectedDay(day);
-                        setIsOpen(false);
-                      }}
-                      className=" px-2 py-2 w-44 rounded-md hover:bg-[hsl(243,23%,24%)] cursor-pointer text-amber-50"
-                    >
-                      {day}
-                    </div>
-                  ))}
-                </div>
-              )}
+              <div className="space-y-2">
+                {displayHours.length > 0 ? (
+                  // ✅ DYNAMIC HOURLY DATA - Renders actual data from API
+                  displayHours.map((hour, index) => {
+                    const formattedTime = formatTime(hour.time);
+                    const icon = getWeatherIcon(hour.condition || "Clear");
+                    const temperature = isFahrenheit
+                      ? Math.round(hour.temp_f || 0)
+                      : Math.round(hour.temp_c || 0);
 
-              {/* Hourly Data */}
-              {currentHours.slice(15, 22).map((hour, index) => {
-                const time = hour.time?.split(" ")[1] || `${15 + index}:00`;
-                const icon = getWeatherIcon(hour.condition?.text);
-                
-                return (
-                  <div key={index} className="relative left-2 md:w-auto items-center w-full h-15 bg-[hsla(300,2%,19%,0.57)] rounded-lg border border-gray-700 p-3 flex">
-                    <img src={icon} alt="weather icon" className="h-10 w-10 object-contain"/>
-                    <p className="font-bold text-white text-center ml-2">{time}</p>
-                    <div className="ml-auto flex p-2">
-                      <p className="text-[hsla(300,8%,78%,0.58)] font-bold">
-                        {isFahrenheit
-                          ? `${Math.round(hour.temp_f)}°`
-                          : `${Math.round(hour.temp_c)}°`}
-                      </p>
-                    </div>
+                    return (
+                      <div 
+                        key={index} 
+                        className="flex items-center justify-between px-4 py-3 bg-[hsla(300,2%,19%,0.57)] rounded-lg border border-gray-700 hover:bg-[hsla(300,2%,25%,0.7)] transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <img 
+                            src={icon} 
+                            alt="weather icon" 
+                            className="h-8 w-8 object-contain" 
+                          />
+                          <span className="text-white font-medium text-sm">
+                            {formattedTime}
+                          </span>
+                        </div>
+                        <span className="text-[hsla(300,8%,78%,0.58)] font-bold">
+                          {temperature}°
+                        </span>
+                      </div>
+                    );
+                  })
+                ) : (
+                  // ✅ No data available message
+                  <div className="text-gray-400 text-center py-8 bg-[hsla(300,2%,19%,0.4)] rounded-lg border border-gray-700">
+                    <p className="text-white">No hourly data available</p>
+                    <p className="text-sm mt-2">Try selecting another day or city</p>
                   </div>
-                );
-              })}
+                )}
+              </div>
             </div>
           </div>
         )}
-
       </div>
     </>
   );
