@@ -78,7 +78,7 @@ export function WeatherApp() {
     { label: "Inches (in)" } 
   ];
 
-  const API_URL = import.meta.env.VITE_API_URL || 'https://weather-main-app-yf2k.onrender.com';
+  const API_URL = import.meta.env.VITE_API_URL || 'https://weather-main-app-zio1.onrender.com';
 
   // ✅ Use useMemo to compute available days from weather data
   const availableDays = useMemo(() => {
