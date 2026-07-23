@@ -329,55 +329,63 @@ export function WeatherPage() {
           </ul>
         </nav>
 
-        {/* Search Section */}
-        <div className="items-center p-2 gap-3 justify-center w-full relative z-10">
-          <h1 className="font-['DM Sans', sans-serif] text-7xl max-w-100 sm:max-w-md md:max-w-lg lg:max-w-2xl mx-auto font-medium px-2 py-2 text-white text-center sm:text-6xl lg:text-3xl">
-            How's the sky looking today?
-          </h1>
-          <div className="relative justify-center w-full items-center px-5 flex py-5 gap-3">
-            <div className="relative grid gap-1 max-w-full lg:flex sm:max-w-md">
-              <img src={IconSearch} alt="search" className="absolute left-4 sm:left-3 lg:left-4 top-1/4 lg:top-1/2 transform -translate-y-1/2 lg:h-4 lg:w-4 sm:h-3 sm:w-3" />
-              <input 
-                type="text" 
-                value={searchCity} 
-                onChange={(e) => setSearchCity(e.target.value)}
-                placeholder="Search for a place..." 
-                onFocus={() => setShowDropDown(true)}
-                className="text-white justify-center border border-gray-700 h-10 w-auto rounded-md px-12 py-3 bg-[hsla(255,3%,31%,0.66)] outline-none"
-                onKeyPress={(e) => e.key === 'Enter' && getWeather()}
-                disabled={loading}
-              />
-              <button 
-                className={`max-w-full w-full md:w-auto cursor-pointer h-10 flex items-center gap-1 p-1 rounded-md text-amber-50 font-bold justify-center ${
-                  loading ? 'bg-gray-600 cursor-not-allowed' : 'bg-[hsl(233,67%,56%)]'
-                }`}
-                onClick={getWeather}
-                disabled={loading}
+       {/* Search Section */}
+<div className="items-center p-2 gap-3 justify-center w-full relative z-10">
+  <h1 className="font-['DM Sans', sans-serif] text-7xl max-w-100 sm:max-w-md md:max-w-lg lg:max-w-2xl mx-auto font-medium px-2 py-2 text-white text-center sm:text-6xl lg:text-3xl">
+    How's the sky looking today?
+  </h1>
+  
+  <div className="flex justify-center w-full px-5 py-5">
+    <div className="relative w-full max-w-full lg:max-w-xl">
+      <div className="relative flex items-center">
+        <img 
+          src={IconSearch} 
+          alt="search" 
+          className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 z-10" 
+        />
+        <input 
+          type="text" 
+          value={searchCity} 
+          onChange={(e) => setSearchCity(e.target.value)}
+          placeholder="Search for a place..." 
+          onFocus={() => setShowDropDown(true)}
+          onBlur={() => setTimeout(() => setShowDropDown(false), 200)}
+          className="text-white w-full border border-gray-700 h-10 rounded-md pl-10 pr-4 py-3 bg-[hsla(255,3%,31%,0.66)] outline-none focus:border-blue-500"
+          onKeyPress={(e) => e.key === 'Enter' && getWeather()}
+          disabled={loading}
+        />
+        <button 
+          className={`ml-2 w-auto min-w-[80px] cursor-pointer h-10 flex items-center justify-center px-4 rounded-md text-amber-50 font-bold ${
+            loading ? 'bg-gray-600 cursor-not-allowed' : 'bg-[hsl(233,67%,56%)] hover:bg-[hsl(233,67%,46%)]'
+          }`}
+          onClick={getWeather}
+          disabled={loading}
+        >
+          {loading ? 'Loading...' : 'Search'}
+        </button>
+      </div>
+      
+      {showdropdown && (
+        <div className="absolute top-full left-0 right-0 z-50 mt-1">
+          <div className="w-full bg-[hsl(243,27%,20%)] border border-gray-600 rounded-md overflow-hidden shadow-lg">
+            {names.map((name, index) => (
+              <div 
+                key={index}
+                onClick={() => {
+                  setShowDropDown(false);
+                  setSearchCity(name);
+                }}
+                className="w-full px-4 py-2 font-bold text-amber-50 hover:bg-[hsl(243,23%,24%)] cursor-pointer transition-colors"
               >
-                {loading ? 'Loading...' : 'Search'}
-              </button>
-            </div>
-          </div>
-          
-          {showdropdown && (
-            <div className="relative flex justify-center ">
-              <div className="cursor-pointer md:w-75 lg:w-75 w-75 p-1 justify-center absolute z-50 bg-[hsl(243,27%,20%)] border border-gray-600 rounded-md mt-1">
-                {names.map((name, index) => (
-                  <div 
-                    key={index}
-                    onClick={() => {
-                      setShowDropDown(false);
-                      setSearchCity(name);
-                    }}
-                    className="lg:w-73 md:w-73 p-2 gap-2 w-87 font-bold rounded-md text-amber-50 hover:bg-[hsl(243,23%,24%)]"
-                  >
-                    {name}
-                  </div>
-                ))}
+                {name}
               </div>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
+      )}
+    </div>
+  </div>
+</div>
 
         {/* Error Message Display */}
         {error && (
@@ -406,7 +414,7 @@ export function WeatherPage() {
               {/* Main Weather Card */}
               <div className="relative flex justify-center items-center w-full">
                 <div className="relative flex items-center justify-center p-1">
-                  <div className="absolute inset-0 flex flex-col items-center right-auto p-5 z-10">
+                  <div className="absolute inset-0 flex flex-col items-center right-auto p-5 z-0">
                     <img src={iconLoading} alt="icon" />
                     <i className="text-white text-2xl font-bold">{weather.city}</i>
                     <p className="text-white text-2xl font-bold">{weather.country}</p>
@@ -424,7 +432,7 @@ export function WeatherPage() {
                     className="block md:hidden w-full" 
                   />
 
-                  <div className="absolute right-4 flex items-center gap-2 z-10">
+                  <div className="absolute right-4 flex items-center gap-2 z-1">
                     <img src={getWeatherIcon(weather.current?.condition)} alt="weather icon" className="h-12 w-auto" />
                     <i className="text-6xl font-bold text-white">
                       {weather?.current && (
