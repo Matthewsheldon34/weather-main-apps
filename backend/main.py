@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
 import requests
-from datetime import datetime, timedelta  # ✅ Added timedelta
+from datetime import datetime, timedelta
 import sys
 
 # Load .env file
@@ -36,8 +36,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search?name=CityName"
-WEATHER_URL = "https://api.open-meteo.com/v1/forecast?latitude=40.7&longitude=-74&hourly=temperature_2m";
+GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
+WEATHER_URL = "https://api.open-meteo.com/v1/forecast"
 
 @app.get("/")
 async def read_root():
@@ -221,16 +221,17 @@ def format_weather_data(data, city_name, country, lat, lon, timezone):
 
     # Get current weather
     current = data.get("current", {})
-    current_weather_code = current.get("weather_code")
+    current_weather_code = current.get("weather_code") if current else None
     current_condition = weather_codes.get(current_weather_code, {"text": "Unknown", "icon": "//cdn.weatherapi.com/weather/64x64/day/113.png"})
     
-    current_temp_c = current.get("temperature_2m")
+    current_temp_c = current.get("temperature_2m") if current else None
     current_temp_f = current_temp_c * 9/5 + 32 if current_temp_c is not None else None
     
-    current_wind_kph = current.get("wind_speed_10m") * 3.6 if current.get("wind_speed_10m") is not None else None
-    current_wind_mph = current.get("wind_speed_10m") * 2.23694 if current.get("wind_speed_10m") is not None else None
+    current_wind_speed = current.get("wind_speed_10m") if current else None
+    current_wind_kph = current_wind_speed * 3.6 if current_wind_speed is not None else None
+    current_wind_mph = current_wind_speed * 2.23694 if current_wind_speed is not None else None
     
-    current_precip_mm = current.get("precipitation")
+    current_precip_mm = current.get("precipitation") if current else None
     current_precip_in = current_precip_mm * 0.0393701 if current_precip_mm is not None else None
     
     # Get daily and hourly forecast
@@ -245,12 +246,19 @@ def format_weather_data(data, city_name, country, lat, lon, timezone):
     
     # ✅ Process daily forecast with dynamic day names
     if daily and daily.get("time"):
-        for i in range(len(daily["time"])):
-            day_code = daily.get("weather_code", [None])[i]
-            day_condition = weather_codes.get(day_code, {"text": "Unknown", "icon": "//cdn.weatherapi.com/weather/64x64/day/113.png"})
+        daily_times = daily.get("time", [])
+        daily_weather_codes = daily.get("weather_code", [])
+        daily_max_temps = daily.get("temperature_2m_max", [])
+        daily_min_temps = daily.get("temperature_2m_min", [])
+        daily_rain_chance = daily.get("precipitation_probability_max", [])
+        
+        for i in range(len(daily_times)):
+            # Get day code safely
+            day_code = daily_weather_codes[i] if i < len(daily_weather_codes) else None
+            day_condition = weather_codes.get(day_code, {"text": "Clear", "icon": "//cdn.weatherapi.com/weather/64x64/day/113.png"})
             
             # ✅ Get dynamic day name
-            day_date = daily["time"][i]
+            day_date = daily_times[i]
             day_name = get_day_name(day_date, i)
             print(f"Day {i}: {day_date} -> {day_name}")
             
@@ -258,27 +266,34 @@ def format_weather_data(data, city_name, country, lat, lon, timezone):
             day_hours = []
             
             # ✅ Process hourly data from parallel arrays
-            if hourly and hourly.get("time") and len(hourly["time"]) > 0:
+            if hourly and hourly.get("time") and len(hourly.get("time", [])) > 0:
+                hourly_times = hourly.get("time", [])
+                hourly_temps = hourly.get("temperature_2m", [])
+                hourly_codes = hourly.get("weather_code", [])
+                hourly_humidity = hourly.get("relative_humidity_2m", [])
+                hourly_wind = hourly.get("wind_speed_10m", [])
+                hourly_rain = hourly.get("precipitation_probability", [])
+                
                 print(f"Processing hourly data for day {day_date}")
                 
                 # Find all hourly entries for this day
-                for j, hour_time in enumerate(hourly["time"]):
+                for j, hour_time in enumerate(hourly_times):
                     # Check if this hour belongs to the current day
                     if hour_time.startswith(day_date):
-                        hour_temp_c = hourly.get("temperature_2m", [])[j] if j < len(hourly.get("temperature_2m", [])) else None
+                        hour_temp_c = hourly_temps[j] if j < len(hourly_temps) else None
                         hour_temp_f = hour_temp_c * 9/5 + 32 if hour_temp_c is not None else None
-                        hour_code = hourly.get("weather_code", [])[j] if j < len(hourly.get("weather_code", [])) else None
+                        hour_code = hourly_codes[j] if j < len(hourly_codes) else None
                         
                         # ✅ Get condition text directly
                         hour_condition_obj = weather_codes.get(hour_code, {"text": "Clear", "icon": ""})
                         hour_condition_text = hour_condition_obj["text"]
                         
-                        hour_wind_speed = hourly.get("wind_speed_10m", [])[j] if j < len(hourly.get("wind_speed_10m", [])) else None
+                        hour_wind_speed = hourly_wind[j] if j < len(hourly_wind) else None
                         hour_wind_kph = hour_wind_speed * 3.6 if hour_wind_speed is not None else None
                         hour_wind_mph = hour_wind_speed * 2.23694 if hour_wind_speed is not None else None
                         
-                        hour_humidity = hourly.get("relative_humidity_2m", [])[j] if j < len(hourly.get("relative_humidity_2m", [])) else None
-                        hour_rain_chance = hourly.get("precipitation_probability", [])[j] if j < len(hourly.get("precipitation_probability", [])) else None
+                        hour_humidity_val = hourly_humidity[j] if j < len(hourly_humidity) else None
+                        hour_rain_chance = hourly_rain[j] if j < len(hourly_rain) else None
                         
                         day_hours.append({
                             "time": hour_time,
@@ -289,7 +304,7 @@ def format_weather_data(data, city_name, country, lat, lon, timezone):
                             "chance_of_rain": hour_rain_chance if hour_rain_chance is not None else 0,
                             "wind_kph": hour_wind_kph if hour_wind_kph is not None else 0,
                             "wind_mph": hour_wind_mph if hour_wind_mph is not None else 0,
-                            "humidity": hour_humidity if hour_humidity is not None else 0
+                            "humidity": hour_humidity_val if hour_humidity_val is not None else 0
                         })
                 
                 print(f"Found {len(day_hours)} hours for day {day_date}")
@@ -299,14 +314,8 @@ def format_weather_data(data, city_name, country, lat, lon, timezone):
                 print(f"⚠️ No hourly data for day {day_date}, generating from daily data")
                 
                 # Get min and max temps for this day
-                max_temp = daily.get("temperature_2m_max", [None])[i]
-                min_temp = daily.get("temperature_2m_min", [None])[i]
-                
-                # Use defaults if not available
-                if max_temp is None:
-                    max_temp = 20
-                if min_temp is None:
-                    min_temp = 10
+                max_temp = daily_max_temps[i] if i < len(daily_max_temps) else 20
+                min_temp = daily_min_temps[i] if i < len(daily_min_temps) else 10
                 
                 # Generate 24 hours of data
                 for hour in range(24):
@@ -324,18 +333,6 @@ def format_weather_data(data, city_name, country, lat, lon, timezone):
                     # Use the day's condition
                     hour_condition_text = day_condition["text"]
                     
-                    # Vary conditions slightly for realism
-                    if hour >= 12 and hour <= 15 and "Cloudy" in hour_condition_text:
-                        hour_condition_text = "Partly cloudy"
-                    elif hour >= 20 and "Clear" in hour_condition_text:
-                        hour_condition_text = "Clear"
-                    
-                    # Calculate chance of rain
-                    rain_chance = 0
-                    if hour >= 8 and hour <= 20:
-                        rain_chance = daily.get("precipitation_probability_max", [0])[i] or 0
-                        rain_chance = max(0, min(100, rain_chance + (hour % 3) * 2 - 3))
-                    
                     # Format time
                     hour_time = f"{day_date}T{hour:02d}:00"
                     
@@ -345,7 +342,7 @@ def format_weather_data(data, city_name, country, lat, lon, timezone):
                         "temp_f": round(temp * 9/5 + 32, 1),
                         "condition": hour_condition_text,
                         "icon": "//cdn.weatherapi.com/weather/64x64/day/113.png",
-                        "chance_of_rain": min(100, max(0, rain_chance)),
+                        "chance_of_rain": 0,
                         "wind_kph": 10 + (hour % 5) * 2,
                         "wind_mph": 6.2 + (hour % 5) * 1.2,
                         "humidity": 50 + (hour % 7) * 3
@@ -355,16 +352,16 @@ def format_weather_data(data, city_name, country, lat, lon, timezone):
             
             # ✅ Format each forecast day with dynamic day name
             forecast_days.append({
-                "date": daily["time"][i],
+                "date": day_date,
                 "dayName": day_name,  # ✅ Dynamic day name
                 "day": {
-                    "maxtemp_c": daily.get("temperature_2m_max", [None])[i],
-                    "maxtemp_f": daily.get("temperature_2m_max", [None])[i] * 9/5 + 32 if daily.get("temperature_2m_max", [None])[i] is not None else None,
-                    "mintemp_c": daily.get("temperature_2m_min", [None])[i],
-                    "mintemp_f": daily.get("temperature_2m_min", [None])[i] * 9/5 + 32 if daily.get("temperature_2m_min", [None])[i] is not None else None,
+                    "maxtemp_c": daily_max_temps[i] if i < len(daily_max_temps) else 0,
+                    "maxtemp_f": (daily_max_temps[i] * 9/5 + 32) if i < len(daily_max_temps) and daily_max_temps[i] is not None else None,
+                    "mintemp_c": daily_min_temps[i] if i < len(daily_min_temps) else 0,
+                    "mintemp_f": (daily_min_temps[i] * 9/5 + 32) if i < len(daily_min_temps) and daily_min_temps[i] is not None else None,
                     "condition": day_condition["text"] if day_condition else "Clear",
                     "icon": day_condition["icon"] if day_condition else "",
-                    "daily_chance_of_rain": daily.get("precipitation_probability_max", [None])[i],
+                    "daily_chance_of_rain": daily_rain_chance[i] if i < len(daily_rain_chance) else 0,
                     "humidity": 65,
                     "wind_kph": 15,
                     "wind_mph": 9.3,
@@ -388,12 +385,12 @@ def format_weather_data(data, city_name, country, lat, lon, timezone):
             "temp_f": current_temp_f,
             "condition": current_condition["text"] if current_condition else "Clear",
             "icon": current_condition["icon"] if current_condition else "",
-            "humidity": current.get("relative_humidity_2m"),
-            "feelslike_c": current.get("apparent_temperature"),
-            "feelslike_f": current.get("apparent_temperature") * 9/5 + 32 if current.get("apparent_temperature") is not None else None,
+            "humidity": current.get("relative_humidity_2m") if current else None,
+            "feelslike_c": current.get("apparent_temperature") if current else None,
+            "feelslike_f": (current.get("apparent_temperature") * 9/5 + 32) if current and current.get("apparent_temperature") is not None else None,
             "wind_kph": current_wind_kph,
             "wind_mph": current_wind_mph,
-            "cloud": current.get("cloud_cover"),
+            "cloud": current.get("cloud_cover") if current else None,
             "precip_mm": current_precip_mm,
             "precip_in": current_precip_in
         },

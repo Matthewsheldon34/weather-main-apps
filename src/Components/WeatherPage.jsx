@@ -95,7 +95,7 @@ export function WeatherPage() {
     return "Hot";
   };
 
-  const API_URL = import.meta.env.VITE_API_URL || 'https://weather-main-app-qm9s.onrender.com';
+  const API_URL = import.meta.env.VITE_API_URL || 'https://weather-main-app-yf2k.onrender.com';
 
   // ✅ Use useMemo to compute available days from weather data
   const availableDays = useMemo(() => {
