@@ -5,6 +5,7 @@ import os
 import requests
 from datetime import datetime, timedelta
 import sys
+from cachetools import TTLCache  # ✅ Import cachetools
 
 # Load .env file
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -16,6 +17,9 @@ app = FastAPI(
     description="Weather backend service using Open-Meteo API",
     version="2.0.0"
 )
+
+# ✅ Initialize cache with 5-minute TTL (Time To Live)
+cache = TTLCache(maxsize=100, ttl=300)  # 300 seconds = 5 minutes
 
 # CORS Configuration
 ALLOWED_ORIGINS = [
@@ -56,6 +60,12 @@ async def get_weather(city: str = Query("London", description="City name to get 
             "error": "City parameter is required",
             "message": "Please provide a valid city name"
         }
+
+    # ✅ Check cache first
+    cache_key = city.strip().lower()
+    if cache_key in cache:
+        print(f"✅ Returning cached data for {city}")
+        return cache[cache_key]
 
     try:
         # Step 1: Get coordinates
@@ -99,11 +109,24 @@ async def get_weather(city: str = Query("London", description="City name to get 
             },
             timeout=10
         )
+        
+        # ✅ Check if we're being rate limited
+        if weather_response.status_code == 429:
+            return {
+                "error": "Rate limit exceeded",
+                "message": "Weather service is busy. Please wait a moment and try again.",
+                "retry_after": 60
+            }
+        
         weather_response.raise_for_status()
         weather_data = weather_response.json()
 
         # Step 3: Format the response
         formatted_data = format_weather_data(weather_data, city_name, country, latitude, longitude, timezone)
+        
+        # ✅ Store in cache
+        cache[cache_key] = formatted_data
+        print(f"✅ Cached data for {city}")
         
         return formatted_data
 
@@ -117,7 +140,7 @@ async def get_weather(city: str = Query("London", description="City name to get 
             elif e.response.status_code == 429:
                 return {
                     "error": "Rate limit exceeded",
-                    "message": "Too many requests. Please try again later."
+                    "message": "Too many requests. Please wait a moment and try again."
                 }
         return {
             "error": "Weather API error",
@@ -159,6 +182,22 @@ async def debug_env():
         "api_type": "Open-Meteo (No API Key Required)",
         "current_directory": os.getcwd(),
         "all_env_vars": list(os.environ.keys())
+    }
+
+@app.get("/clear-cache")
+async def clear_cache():
+    """Clear the weather cache (useful for testing)"""
+    cache.clear()
+    return {"message": "Cache cleared successfully"}
+
+@app.get("/cache-stats")
+async def cache_stats():
+    """Get cache statistics"""
+    return {
+        "cache_size": len(cache),
+        "max_size": cache.maxsize,
+        "ttl_seconds": cache.ttl,
+        "cached_cities": list(cache.keys())
     }
 
 
@@ -353,7 +392,7 @@ def format_weather_data(data, city_name, country, lat, lon, timezone):
             # ✅ Format each forecast day with dynamic day name
             forecast_days.append({
                 "date": day_date,
-                "dayName": day_name,  # ✅ Dynamic day name
+                "dayName": day_name,
                 "day": {
                     "maxtemp_c": daily_max_temps[i] if i < len(daily_max_temps) else 0,
                     "maxtemp_f": (daily_max_temps[i] * 9/5 + 32) if i < len(daily_max_temps) and daily_max_temps[i] is not None else None,
